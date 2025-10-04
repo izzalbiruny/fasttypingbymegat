@@ -28,6 +28,13 @@
   .hidden{display:none;}
   .progress-page{text-align:center;margin-top:20px;}
   .small{font-size:0.9rem;color:gray;}
+
+  /* --- MOBILE INPUT FIX --- */
+  #hiddenInput{
+    opacity:0;
+    position:absolute;
+    left:-9999px;
+  }
 </style>
 </head>
 <body>
@@ -88,6 +95,9 @@
   </div>
 </div>
 
+<!-- --- MOBILE INPUT FIX --- -->
+<input id="hiddenInput" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" />
+
 <audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
 
 <script>
@@ -144,14 +154,17 @@ const resAcc = document.getElementById('resAcc');
 const resErr = document.getElementById('resErr');
 const playAgainBtn = document.getElementById('playAgainBtn');
 
+// --- MOBILE INPUT FIX ---
+const hiddenInput = document.getElementById('hiddenInput');
+
 // ---------- state ----------
 let lesson = "";
 let timer = 0;
 let initialTime = 0;
 let interval = null;
 let started = false;
-let gameOver = false;        // block further input after finish
-let progressShown = false;   // ensure showProgress only once
+let gameOver = false;
+let progressShown = false;
 let charIndex = 0;
 let errors = 0;
 let typedChars = 0;
@@ -166,7 +179,6 @@ function pickRandomFromTheme(theme){
 
 function renderText(){
   textDisplay.innerHTML = "";
-  // ensure charStatus array is same length
   if(charStatus.length < lesson.length){
     for(let i = charStatus.length; i < lesson.length; i++) charStatus[i] = undefined;
   }
@@ -181,13 +193,11 @@ function renderText(){
 }
 
 function resetGame(){
-  // clear timer & flags
   clearInterval(interval);
   interval = null;
   started = false;
   gameOver = false;
   progressShown = false;
-
   charIndex = 0;
   errors = 0;
   typedChars = 0;
@@ -198,9 +208,7 @@ function resetGame(){
   timerEl.textContent = `Time: ${timer}s`;
   timerEl.classList.remove('red');
 
-  // pick lesson from chosen theme (random)
   lesson = pickRandomFromTheme(themeSelect.value);
-  // fallback minimal content if missing
   if(!lesson) lesson = "Type the chosen theme sentence.";
   renderText();
 
@@ -208,89 +216,60 @@ function resetGame(){
   accEl.textContent = '100';
   errEl.textContent = '0';
 
-  // show game UI
   gameSection.classList.remove('hidden');
   progressSection.classList.add('hidden');
 
-  // ensure single key listener
   document.removeEventListener('keydown', keyHandler);
   document.addEventListener('keydown', keyHandler);
 
-  // scroll into view for convenience
+  // --- MOBILE INPUT FIX ---
+  hiddenInput.value = "";
+  hiddenInput.focus();
+
   window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function startTimer(){
   if(started || gameOver) return;
   started = true;
-  // guard: if timer already 0, end immediately
-  if(timer <= 0){
-    handleTimeUp();
-    return;
-  }
-  interval = setInterval(()=> {
+  if(timer <= 0){handleTimeUp();return;}
+  interval = setInterval(()=>{
     timer--;
     if(timer < 0) timer = 0;
     timerEl.textContent = `Time: ${timer}s`;
     if(timer <= 10) timerEl.classList.add('red'); else timerEl.classList.remove('red');
-    if(timer <= 0){
-      clearInterval(interval);
-      handleTimeUp();
-    }
-  }, 1000);
+    if(timer <= 0){clearInterval(interval);handleTimeUp();}
+  },1000);
 }
 
 function handleTimeUp(){
-  // set game over and show progress (only once)
   if(gameOver || progressShown) return;
   gameOver = true;
   progressShown = true;
-  // remove keyboard listener so no further typing affects state
   document.removeEventListener('keydown', keyHandler);
   showProgress(false);
 }
 
 function keyHandler(e){
-  // block any input when game over
   if(gameOver) return;
-
-  // start timer on first key press
   startTimer();
 
   const key = e.key;
-  // block Backspace (we want locked errors)
-  if(key === 'Backspace'){
-    e.preventDefault();
-    return;
-  }
+  if(key === 'Backspace'){e.preventDefault();return;}
 
-  // handle single character keys only
   if(key.length === 1){
-    // safety: if charIndex already beyond length, ignore
     if(charIndex >= lesson.length) return;
-
     const currentChar = lesson[charIndex];
-    if(key === currentChar){
-      charStatus[charIndex] = 'correct';
-    } else {
-      charStatus[charIndex] = 'wrong';
-      errors++;
-      // beep for wrong
-      try { beep.currentTime = 0; beep.play(); } catch(e) {}
-    }
-
+    if(key === currentChar){charStatus[charIndex] = 'correct';}
+    else {charStatus[charIndex] = 'wrong';errors++;try{beep.currentTime=0;beep.play();}catch(e){}}
     charIndex++;
     typedChars++;
     updateStats();
     renderText();
-
-    // finished all characters -> win
     if(charIndex >= lesson.length){
-      // stop timer & show progress as win (only once)
       if(!gameOver && !progressShown){
         clearInterval(interval);
-        gameOver = true;
-        progressShown = true;
+        gameOver = true;progressShown = true;
         document.removeEventListener('keydown', keyHandler);
         showProgress(true);
       }
@@ -300,46 +279,45 @@ function keyHandler(e){
 
 function updateStats(){
   const timeSpent = initialTime - timer;
-  const minutes = (timeSpent > 0) ? (timeSpent / 60) : 0;
-  const wpm = minutes > 0 ? Math.round((typedChars / 5) / minutes) : 0;
-  const acc = typedChars > 0 ? Math.max(0, Math.round(((typedChars - errors) / typedChars) * 100)) : 100;
+  const minutes = (timeSpent>0)?(timeSpent/60):0;
+  const wpm = minutes>0?Math.round((typedChars/5)/minutes):0;
+  const acc = typedChars>0?Math.max(0,Math.round(((typedChars-errors)/typedChars)*100)):100;
   wpmEl.textContent = wpm;
   accEl.textContent = acc;
   errEl.textContent = errors;
 }
 
 function showProgress(win){
-  // guard: ensure only shown once
-  if(progressShown && gameOver) {
-    // already shown
-    // still set fields to latest if needed
-  }
   progressShown = true;
   gameOver = true;
-
   gameSection.classList.add('hidden');
   progressSection.classList.remove('hidden');
-
   resultText.textContent = win ? "🎉 You Win!" : "⏳ Time's Up!";
-  const finalWpm = wpmEl.textContent;
-  const finalAcc = accEl.textContent;
-  const finalErr = errEl.textContent;
-  resWpm.textContent = finalWpm;
-  resAcc.textContent = finalAcc;
-  resErr.textContent = finalErr;
+  resWpm.textContent = wpmEl.textContent;
+  resAcc.textContent = accEl.textContent;
+  resErr.textContent = errEl.textContent;
 }
 
-// UI bindings
-darkToggle.addEventListener('click', () => document.body.classList.toggle('dark'));
-resetBtn.addEventListener('click', resetGame);
-playAgainBtn.addEventListener('click', resetGame);
+// --- MOBILE INPUT FIX ---
+document.body.addEventListener('click',()=>hiddenInput.focus());
+hiddenInput.addEventListener('input',(e)=>{
+  if(gameOver) return;
+  const val = e.target.value;
+  if(val){
+    const ch = val.slice(-1);
+    keyHandler({key:ch});
+    e.target.value="";
+  }
+});
 
-// change theme resets game (pick new sentence)
-themeSelect.addEventListener('change', resetGame);
-modeSelect.addEventListener('change', resetGame);
-timeSelect.addEventListener('change', resetGame);
+// UI
+darkToggle.addEventListener('click',()=>document.body.classList.toggle('dark'));
+resetBtn.addEventListener('click',resetGame);
+playAgainBtn.addEventListener('click',resetGame);
+themeSelect.addEventListener('change',resetGame);
+modeSelect.addEventListener('change',resetGame);
+timeSelect.addEventListener('change',resetGame);
 
-// initial setup
 resetGame();
 </script>
 </body>
