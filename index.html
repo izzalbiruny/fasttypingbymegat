@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Fast Typing</title>
+<style>
+  :root {
+    --bg:#ffffff; --text:#000; --accent:#0077ff;
+    --error:#ff4444; --correct:#1eb21e; --timer-bg:#f0f0f0;
+  }
+  body.dark {--bg:#1e1e1e;--text:#e0e0e0;--accent:#66aaff;
+             --error:#ff6666;--correct:#28d428;--timer-bg:#333;}
+  body{margin:0;font-family:sans-serif;background:var(--bg);color:var(--text);
+       padding:20px;transition:.25s;}
+  h1{text-align:center;margin-top:0;}
+  .controls{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:15px;}
+  select,button{padding:8px 12px;font-size:15px;border:1px solid #aaa;border-radius:6px;background:var(--bg);color:var(--text);cursor:pointer;}
+  button:hover,select:hover{border-color:var(--accent);}
+  .dark-toggle{background:var(--accent);color:#fff;border:none;}
+  .timer{text-align:center;font-size:1.75rem;margin-bottom:14px;padding:10px;border-radius:8px;background:var(--timer-bg);}
+  .timer.red{background:var(--error);color:#fff;}
+  .text-display{max-width:820px;margin:0 auto;font-size:1.15rem;line-height:1.8;padding:16px;border:1px solid #ccc;border-radius:8px;background:var(--bg);min-height:90px;user-select:none;white-space:pre-wrap;}
+  .correct{color:var(--correct);}
+  .wrong{color:var(--error);}
+  .active{text-decoration:underline;}
+  .stats{text-align:center;margin-top:14px;font-size:1rem;}
+  .hidden{display:none;}
+  .progress-page{text-align:center;margin-top:20px;}
+  .small{font-size:0.9rem;color:gray;}
+</style>
+</head>
+<body>
+
+<h1>Typing Area</h1>
+
+<div class="controls">
+  <label>Theme:
+    <select id="themeSelect">
+      <option value="Sea">🌊 Sea</option>
+      <option value="House">🏠 In the House</option>
+      <option value="Supermarket">🏪 Supermarket</option>
+      <option value="School">🏫 School</option>
+    </select>
+  </label>
+
+  <label>Mode:
+    <select id="modeSelect">
+      <option value="easy">Easy</option>
+      <option value="medium">Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+  </label>
+
+  <label>Time (sec):
+    <select id="timeSelect">
+      <option>15</option><option>20</option><option>25</option>
+      <option>30</option><option>35</option><option>40</option>
+      <option>45</option><option>50</option>
+    </select>
+  </label>
+
+  <button id="darkModeToggle" class="dark-toggle">Toggle Dark/Light</button>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<!-- GAME -->
+<div id="gameSection">
+  <div class="timer" id="timer">Time: 0s</div>
+  <div class="text-display" id="textDisplay"></div>
+  <div class="stats">
+    <p>WPM: <span id="wpm">0</span> | Accuracy: <span id="accuracy">100</span>% | Errors: <span id="errors">0</span></p>
+    <p class="small">Tip: press regular keys to type. Backspace is disabled for corrections on wrong chars.</p>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div id="progressSection" class="hidden">
+  <div class="progress-page">
+    <h2 id="resultText"></h2>
+    <p>WPM: <strong id="resWpm"></strong></p>
+    <p>Accuracy: <strong id="resAcc"></strong>%</p>
+    <p>Errors: <strong id="resErr"></strong></p>
+    <p class="small">Choose a theme from top (Theme dropdown) before playing again.</p>
+    <div style="margin-top:18px;">
+      <button id="playAgainBtn">Play Again</button>
+    </div>
+  </div>
+</div>
+
+<audio id="beep" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
+<script>
+// ---------- text banks ----------
+const themeTexts = {
+  Sea: [
+    "Waves crash gently on the sandy shore while small crabs run quickly.",
+    "A fishing boat sails across the calm blue sea under a warm sunset.",
+    "Dolphins jump gracefully above the shining ocean water.",
+    "The lighthouse guides ships safely during the stormy night.",
+    "Colorful corals grow under the shallow warm water near the island."
+  ],
+  House: [
+    "The kitchen smells like fresh bread coming out of the warm oven.",
+    "A bright lamp glows softly beside the cozy wooden chair in the corner.",
+    "Children are laughing and playing with their toys in the living room.",
+    "A black cat sleeps on the soft sofa while the TV plays quietly.",
+    "The bathroom mirror fogs up after a long hot shower."
+  ],
+  Supermarket: [
+    "The supermarket shelves are packed with colorful boxes and fresh bread.",
+    "A worker arranges fruits neatly while customers push their shopping carts.",
+    "The frozen section keeps ice cream and frozen vegetables cold all day.",
+    "A little boy asks his mom to buy a chocolate bar near the counter.",
+    "The cashier scans the groceries quickly and prints the receipt."
+  ],
+  School: [
+    "Students quietly solve math problems in their bright classroom.",
+    "The teacher writes notes on the board while the class listens carefully.",
+    "The library is peaceful with students reading books and taking notes.",
+    "The school bell rings loudly signaling the start of recess.",
+    "Friends share snacks together under the big tree near the playground."
+  ]
+};
+
+// ---------- DOM ----------
+const textDisplay = document.getElementById('textDisplay');
+const timerEl = document.getElementById('timer');
+const wpmEl = document.getElementById('wpm');
+const accEl = document.getElementById('accuracy');
+const errEl = document.getElementById('errors');
+const themeSelect = document.getElementById('themeSelect');
+const modeSelect = document.getElementById('modeSelect');
+const timeSelect = document.getElementById('timeSelect');
+const darkToggle = document.getElementById('darkModeToggle');
+const resetBtn = document.getElementById('resetBtn');
+const beep = document.getElementById('beep');
+
+const gameSection = document.getElementById('gameSection');
+const progressSection = document.getElementById('progressSection');
+const resultText = document.getElementById('resultText');
+const resWpm = document.getElementById('resWpm');
+const resAcc = document.getElementById('resAcc');
+const resErr = document.getElementById('resErr');
+const playAgainBtn = document.getElementById('playAgainBtn');
+
+// ---------- state ----------
+let lesson = "";
+let timer = 0;
+let initialTime = 0;
+let interval = null;
+let started = false;
+let gameOver = false;        // block further input after finish
+let progressShown = false;   // ensure showProgress only once
+let charIndex = 0;
+let errors = 0;
+let typedChars = 0;
+let charStatus = []; // 'correct' | 'wrong' | undefined
+
+// ---------- helpers ----------
+function pickRandomFromTheme(theme){
+  const list = themeTexts[theme] || [];
+  if(list.length === 0) return "";
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function renderText(){
+  textDisplay.innerHTML = "";
+  // ensure charStatus array is same length
+  if(charStatus.length < lesson.length){
+    for(let i = charStatus.length; i < lesson.length; i++) charStatus[i] = undefined;
+  }
+  lesson.split('').forEach((ch,i) => {
+    const span = document.createElement('span');
+    span.textContent = ch;
+    if(charStatus[i] === 'correct') span.classList.add('correct');
+    if(charStatus[i] === 'wrong') span.classList.add('wrong');
+    if(i === charIndex) span.classList.add('active');
+    textDisplay.appendChild(span);
+  });
+}
+
+function resetGame(){
+  // clear timer & flags
+  clearInterval(interval);
+  interval = null;
+  started = false;
+  gameOver = false;
+  progressShown = false;
+
+  charIndex = 0;
+  errors = 0;
+  typedChars = 0;
+  charStatus = [];
+
+  initialTime = parseInt(timeSelect.value) || 30;
+  timer = initialTime;
+  timerEl.textContent = `Time: ${timer}s`;
+  timerEl.classList.remove('red');
+
+  // pick lesson from chosen theme (random)
+  lesson = pickRandomFromTheme(themeSelect.value);
+  // fallback minimal content if missing
+  if(!lesson) lesson = "Type the chosen theme sentence.";
+  renderText();
+
+  wpmEl.textContent = '0';
+  accEl.textContent = '100';
+  errEl.textContent = '0';
+
+  // show game UI
+  gameSection.classList.remove('hidden');
+  progressSection.classList.add('hidden');
+
+  // ensure single key listener
+  document.removeEventListener('keydown', keyHandler);
+  document.addEventListener('keydown', keyHandler);
+
+  // scroll into view for convenience
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function startTimer(){
+  if(started || gameOver) return;
+  started = true;
+  // guard: if timer already 0, end immediately
+  if(timer <= 0){
+    handleTimeUp();
+    return;
+  }
+  interval = setInterval(()=> {
+    timer--;
+    if(timer < 0) timer = 0;
+    timerEl.textContent = `Time: ${timer}s`;
+    if(timer <= 10) timerEl.classList.add('red'); else timerEl.classList.remove('red');
+    if(timer <= 0){
+      clearInterval(interval);
+      handleTimeUp();
+    }
+  }, 1000);
+}
+
+function handleTimeUp(){
+  // set game over and show progress (only once)
+  if(gameOver || progressShown) return;
+  gameOver = true;
+  progressShown = true;
+  // remove keyboard listener so no further typing affects state
+  document.removeEventListener('keydown', keyHandler);
+  showProgress(false);
+}
+
+function keyHandler(e){
+  // block any input when game over
+  if(gameOver) return;
+
+  // start timer on first key press
+  startTimer();
+
+  const key = e.key;
+  // block Backspace (we want locked errors)
+  if(key === 'Backspace'){
+    e.preventDefault();
+    return;
+  }
+
+  // handle single character keys only
+  if(key.length === 1){
+    // safety: if charIndex already beyond length, ignore
+    if(charIndex >= lesson.length) return;
+
+    const currentChar = lesson[charIndex];
+    if(key === currentChar){
+      charStatus[charIndex] = 'correct';
+    } else {
+      charStatus[charIndex] = 'wrong';
+      errors++;
+      // beep for wrong
+      try { beep.currentTime = 0; beep.play(); } catch(e) {}
+    }
+
+    charIndex++;
+    typedChars++;
+    updateStats();
+    renderText();
+
+    // finished all characters -> win
+    if(charIndex >= lesson.length){
+      // stop timer & show progress as win (only once)
+      if(!gameOver && !progressShown){
+        clearInterval(interval);
+        gameOver = true;
+        progressShown = true;
+        document.removeEventListener('keydown', keyHandler);
+        showProgress(true);
+      }
+    }
+  }
+}
+
+function updateStats(){
+  const timeSpent = initialTime - timer;
+  const minutes = (timeSpent > 0) ? (timeSpent / 60) : 0;
+  const wpm = minutes > 0 ? Math.round((typedChars / 5) / minutes) : 0;
+  const acc = typedChars > 0 ? Math.max(0, Math.round(((typedChars - errors) / typedChars) * 100)) : 100;
+  wpmEl.textContent = wpm;
+  accEl.textContent = acc;
+  errEl.textContent = errors;
+}
+
+function showProgress(win){
+  // guard: ensure only shown once
+  if(progressShown && gameOver) {
+    // already shown
+    // still set fields to latest if needed
+  }
+  progressShown = true;
+  gameOver = true;
+
+  gameSection.classList.add('hidden');
+  progressSection.classList.remove('hidden');
+
+  resultText.textContent = win ? "🎉 You Win!" : "⏳ Time's Up!";
+  const finalWpm = wpmEl.textContent;
+  const finalAcc = accEl.textContent;
+  const finalErr = errEl.textContent;
+  resWpm.textContent = finalWpm;
+  resAcc.textContent = finalAcc;
+  resErr.textContent = finalErr;
+}
+
+// UI bindings
+darkToggle.addEventListener('click', () => document.body.classList.toggle('dark'));
+resetBtn.addEventListener('click', resetGame);
+playAgainBtn.addEventListener('click', resetGame);
+
+// change theme resets game (pick new sentence)
+themeSelect.addEventListener('change', resetGame);
+modeSelect.addEventListener('change', resetGame);
+timeSelect.addEventListener('change', resetGame);
+
+// initial setup
+resetGame();
+</script>
+</body>
+</html>
